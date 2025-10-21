@@ -1,5 +1,5 @@
 import { Collection, Db } from "npm:mongodb";
-import { assertEquals, assertExists, assertFalse, assertTrue } from "jsr:@std/assert";
+import { assertEquals, assertExists, assertFalse, assert } from "jsr:@std/assert";
 import { testDb, freshID } from "@utils/database.ts";
 import { ID, Empty } from "@utils/types.ts";
 import MessagingConcept from "./MessagingConcept.ts";
@@ -14,29 +14,19 @@ type Text = string;
 const asID = (s: string) => s as ID;
 
 Deno.test("Messaging Concept Tests", async (t) => {
-  let db: Db;
-  let client: Deno.Closer;
-  let concept: MessagingConcept;
-
   const userAlice = asID("user:Alice");
   const userBob = asID("user:Bob");
   const userCharlie = asID("user:Charlie");
   const userDavid = asID("user:David");
 
-  Deno.test.beforeEach(async () => {
-    [db, client] = await testDb();
-    concept = new MessagingConcept(db);
-  });
-
-  Deno.test.afterEach(async () => {
-    await client.close();
-  });
-
   await t.step("startChat action", async (t) => {
+
     await t.step("should create a chat with valid participants and creator", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       const result = await concept.startChat({
         creator: userAlice,
-        participants: [userAlice, userBob],
+        participants: [userAlice, userBob], // Creator is part of the participants list
       });
 
       assertExists((result as { chat: Chat }).chat);
@@ -46,9 +36,12 @@ Deno.test("Messaging Concept Tests", async (t) => {
       assertExists(chat);
       assertEquals(chat.participants.sort(), [userAlice, userBob].sort());
       assertEquals(chat.messages.length, 0);
+      await client.close();
     });
 
     await t.step("should return an error if less than 2 unique participants", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       let result = await concept.startChat({ creator: userAlice, participants: [] });
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, "Chat must have at least 2 unique participants.");
@@ -60,18 +53,24 @@ Deno.test("Messaging Concept Tests", async (t) => {
       result = await concept.startChat({ creator: userAlice, participants: [userAlice, userAlice] });
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, "Chat must have at least 2 unique participants."); // Alice counts as one unique participant.
+      await client.close();
     });
 
     await t.step("should return an error if creator is not a participant", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       const result = await concept.startChat({
         creator: userAlice,
         participants: [userBob, userCharlie],
       });
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, "Creator must be one of the participants.");
+      await client.close();
     });
 
     await t.step("should return an error if a blocked pair exists among participants", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       // Alice blocks Bob
       await concept.blockUser({ requester: userAlice, target: userBob });
 
@@ -81,9 +80,12 @@ Deno.test("Messaging Concept Tests", async (t) => {
       });
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Cannot start chat: A block exists between ${userAlice} and ${userBob}.`);
+      await client.close();
     });
 
     await t.step("should handle multiple participants correctly", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       const result = await concept.startChat({
         creator: userAlice,
         participants: [userAlice, userBob, userCharlie],
@@ -94,10 +96,15 @@ Deno.test("Messaging Concept Tests", async (t) => {
       const chat = await concept.chats.findOne({ _id: chatId });
       assertExists(chat);
       assertEquals(chat.participants.sort(), [userAlice, userBob, userCharlie].sort());
+      await client.close();
     });
+
   });
 
   await t.step("sendMessage action", async (t) => {
+    const [db, client] = await testDb();
+    const concept = new MessagingConcept(db);
+
     let chatResult = await concept.startChat({
       creator: userAlice,
       participants: [userAlice, userBob],
@@ -117,7 +124,7 @@ Deno.test("Messaging Concept Tests", async (t) => {
 
       const chat = await concept.chats.findOne({ _id: chatId });
       assertExists(chat);
-      assertTrue(chat.messages.includes(messageId));
+      assert(chat.messages.includes(messageId));
 
       const messageDoc = await concept.messages.findOne({ _id: messageId });
       assertExists(messageDoc);
@@ -146,9 +153,14 @@ Deno.test("Messaging Concept Tests", async (t) => {
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Author ${userCharlie} is not a participant in chat ${chatId}.`);
     });
+
+    await client.close();
   });
 
   await t.step("leaveChat action", async (t) => {
+    const [db, client] = await testDb();
+    const concept = new MessagingConcept(db);
+
     let chatResult = await concept.startChat({
       creator: userAlice,
       participants: [userAlice, userBob, userCharlie],
@@ -162,8 +174,8 @@ Deno.test("Messaging Concept Tests", async (t) => {
       const chat = await concept.chats.findOne({ _id: chatId });
       assertExists(chat);
       assertFalse(chat.participants.includes(userBob));
-      assertTrue(chat.participants.includes(userAlice));
-      assertTrue(chat.participants.includes(userCharlie));
+      assert(chat.participants.includes(userAlice));
+      assert(chat.participants.includes(userCharlie));
     });
 
     await t.step("should return an error if chat does not exist", async () => {
@@ -184,9 +196,14 @@ Deno.test("Messaging Concept Tests", async (t) => {
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `User ${userDavid} is not a participant in chat ${chatId}.`);
     });
+
+    await client.close();
   });
 
   await t.step("blockUser action", async (t) => {
+    const [db, client] = await testDb();
+    const concept = new MessagingConcept(db);
+
     await t.step("should create a block and remove requester from relevant chats", async () => {
       // Create a chat with Alice, Bob, Charlie
       const chat1Result = await concept.startChat({
@@ -217,15 +234,15 @@ Deno.test("Messaging Concept Tests", async (t) => {
       const chat1 = await concept.chats.findOne({ _id: chat1Id });
       assertExists(chat1);
       assertFalse(chat1.participants.includes(userAlice));
-      assertTrue(chat1.participants.includes(userBob)); // Bob should still be there
-      assertTrue(chat1.participants.includes(userCharlie));
+      assert(chat1.participants.includes(userBob)); // Bob should still be there
+      assert(chat1.participants.includes(userCharlie));
 
       // Verify chat2 is unaffected (does not contain Alice)
       const chat2 = await concept.chats.findOne({ _id: chat2Id });
       assertExists(chat2);
-      assertTrue(chat2.participants.includes(userBob));
-      assertTrue(chat2.participants.includes(userCharlie));
-      assertTrue(chat2.participants.includes(userDavid));
+      assert(chat2.participants.includes(userBob));
+      assert(chat2.participants.includes(userCharlie));
+      assert(chat2.participants.includes(userDavid));
     });
 
     await t.step("should return an error if requester tries to block self", async () => {
@@ -243,9 +260,14 @@ Deno.test("Messaging Concept Tests", async (t) => {
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `User ${userAlice} has already blocked ${userBob}.`);
     });
+
+    await client.close();
   });
 
   await t.step("Principle Trace: users connect, start private conversation, store message history, handle leaving/blocking", async () => {
+    const [db, client] = await testDb();
+    const concept = new MessagingConcept(db);
+
     // 1. Users connect (implicitly by deciding to chat) -> startChat
     const chatResult = await concept.startChat({
       creator: userAlice,
@@ -287,7 +309,7 @@ Deno.test("Messaging Concept Tests", async (t) => {
     const chatAfterLeave = await concept.chats.findOne({ _id: chatId });
     assertExists(chatAfterLeave);
     assertFalse(chatAfterLeave.participants.includes(userBob), "Bob should no longer be a participant.");
-    assertTrue(chatAfterLeave.participants.includes(userAlice), "Alice should still be a participant.");
+    assert(chatAfterLeave.participants.includes(userAlice), "Alice should still be a participant.");
 
     // Bob tries to send a message after leaving, should fail
     const bobTrySend = await concept.sendMessage({ chat: chatId, author: userBob, body: "I'm still here!" });
@@ -309,12 +331,12 @@ Deno.test("Messaging Concept Tests", async (t) => {
     // Alice blocks Charlie
     await concept.blockUser({ requester: userAlice, target: userCharlie });
     const isBlocked = await concept._isBlocked({ requester: userAlice, target: userCharlie });
-    assertTrue(isBlocked.isBlocked, "Alice should have blocked Charlie.");
+    assert(isBlocked.isBlocked, "Alice should have blocked Charlie.");
 
     const chatAfterBlock = await concept.chats.findOne({ _id: chat2Id });
     assertExists(chatAfterBlock);
     assertFalse(chatAfterBlock.participants.includes(userAlice), "Alice should be removed from chat with Charlie.");
-    assertTrue(chatAfterBlock.participants.includes(userCharlie), "Charlie should still be in the chat (Alice removed, not Charlie).");
+    assert(chatAfterBlock.participants.includes(userCharlie), "Charlie should still be in the chat (Alice removed, not Charlie).");
 
     // Alice tries to send a message to the chat she was removed from (due to block), should fail
     const aliceTrySend = await concept.sendMessage({ chat: chat2Id, author: userAlice, body: "Are you there Charlie?" });
@@ -324,9 +346,14 @@ Deno.test("Messaging Concept Tests", async (t) => {
     // Charlie tries to send a message in the chat, should succeed (as only Alice was removed)
     const charlieTrySend = await concept.sendMessage({ chat: chat2Id, author: userCharlie, body: "Alice, why did you leave?" });
     assertExists((charlieTrySend as { message: Message }).message, "Charlie should still be able to send message in chat.");
+
+    await client.close();
   });
 
   await t.step("Query _getChatMessages", async (t) => {
+    const [db, client] = await testDb();
+    const concept = new MessagingConcept(db);
+
     const chatResult = await concept.startChat({
       creator: userAlice,
       participants: [userAlice, userBob],
@@ -354,9 +381,14 @@ Deno.test("Messaging Concept Tests", async (t) => {
       assertExists((messagesResult as { error: string }).error);
       assertEquals((messagesResult as { error: string }).error, `Chat with ID ${nonExistentChat} not found.`);
     });
+
+    await client.close();
   });
 
   await t.step("Query _getChatsForUser", async (t) => {
+    const [db, client] = await testDb();
+    const concept = new MessagingConcept(db);
+
     // Create chat1 with Alice and Bob
     const chat1Result = await concept.startChat({
       creator: userAlice,
@@ -382,8 +414,8 @@ Deno.test("Messaging Concept Tests", async (t) => {
       assertFalse((aliceChatsResult as { error: string }).error);
       const aliceChats = (aliceChatsResult as { chats: Chat[] }).chats;
       assertEquals(aliceChats.length, 2);
-      assertTrue(aliceChats.includes(chat1Id));
-      assertTrue(aliceChats.includes(chat2Id));
+      assert(aliceChats.includes(chat1Id));
+      assert(aliceChats.includes(chat2Id));
 
       const bobChatsResult = await concept._getChatsForUser({ user: userBob });
       assertFalse((bobChatsResult as { error: string }).error);
@@ -397,24 +429,37 @@ Deno.test("Messaging Concept Tests", async (t) => {
       const davidChats = (davidChatsResult as { chats: Chat[] }).chats;
       assertEquals(davidChats.length, 0);
     });
+
+    await client.close();
   });
 
   await t.step("Query _isBlocked", async (t) => {
+
     await t.step("should return true if requester has blocked target", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       await concept.blockUser({ requester: userAlice, target: userBob });
       const result = await concept._isBlocked({ requester: userAlice, target: userBob });
-      assertTrue(result.isBlocked);
+      assert(result.isBlocked);
+      await client.close();
     });
 
     await t.step("should return false if requester has not blocked target", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       const result = await concept._isBlocked({ requester: userAlice, target: userCharlie });
       assertFalse(result.isBlocked);
+      await client.close();
     });
 
     await t.step("should return false if target has blocked requester, but not vice-versa", async () => {
+      const [db, client] = await testDb();
+      const concept = new MessagingConcept(db);
       await concept.blockUser({ requester: userBob, target: userAlice }); // Bob blocks Alice
       const result = await concept._isBlocked({ requester: userAlice, target: userBob }); // Alice checks if she blocked Bob
       assertFalse(result.isBlocked);
+      await client.close();
     });
+
   });
 });

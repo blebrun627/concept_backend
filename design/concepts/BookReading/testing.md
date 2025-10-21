@@ -8,1027 +8,278 @@
 
 ```typescript
 // file: src/BookReading/BookReadingConcept.test.ts
-import { Collection, Db } from "npm:mongodb";
-import { assertEquals, assertNotEquals, assertObjectMatch } from "jsr:@std/assert";
+import { assertEquals, assertObjectMatch, assertNotEquals } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
 import { ID, Empty } from "@utils/types.ts";
 import { freshID } from "@utils/database.ts";
-
 import BookReadingConcept from "./BookReadingConcept.ts";
 
-// Define test IDs
-const TEST_USER_ALICE = "user:Alice" as ID;
-const TEST_USER_BOB = "user:Bob" as ID;
-const TEST_BOOK_HP = "book:HarryPotter" as ID;
-const TEST_BOOK_LOTR = "book:LordOfTheRings" as ID;
-const TEST_SECTION_HP1 = "section:HP_Chapter1" as ID;
-const TEST_SECTION_HP2 = "section:HP_Chapter2" as ID;
-const TEST_SECTION_HP3 = "section:HP_Chapter3" as ID;
-const TEST_SECTION_LOTR1 = "section:LOTR_Part1" as ID;
-const TEST_SECTION_LOTR2 = "section:LOTR_Part2" as ID;
-
-// Helper to manually insert a book structure for testing
-async function insertBookStructure(
-  bookStructuresCollection: Collection<any>,
-  bookId: Book,
-  sections: Section[],
-) {
-  await bookStructuresCollection.insertOne({
-    _id: bookId,
-    sections: sections,
-  });
-}
-
-Deno.test("BookReadingConcept", async (t) => {
-  const [db, client] = await testDb();
-  const({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(progress?.currentPlace, TEST_SECTION_HP2);
-    assertEquals(progress?.finished, false, "Should set finished to false when moving to next");
-  });
-
-  await t.step("should return error if no next section exists", async () => {
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP3 }); // Set to last section
-    const result = await concept.nextSection({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No subsequent section exists for book ${TEST_BOOK_HP}. User is at the last section.` });
-  });
-
-  await t.step("should return error if no progress exists when moving to next section", async () => {
-    const result = await concept.nextSection({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_HP}.` });
-  });
-
-  // --- Test markFinished ---
-  await t.step("should mark a book as finished", async () => {
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR, section: TEST_SECTION_LOTR2 }); // Ensure progress and not finished
-    const result = await concept.markFinished({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
-    assertEquals(result, {});
-
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
-    assertEquals(progress?.finished, true);
-  });
-
-  await t.step("should return error if book is already marked finished", async () => {
-    // Already marked finished by previous step
-    const result = await concept.markFinished({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book ${TEST_BOOK_LOTR} is already marked as finished for user ${TEST_USER_ALICE}.` });
-  });
-
-  await t.step("should return error if no progress exists when marking finished", async () => {
-    const result = await concept.markFinished({ reader: TEST_USER_BOB, book: TEST_BOOK_LOTR });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_LOTR}.` });
-  });
-
-  // --- Test resetProgress ---
-  await t.step("should reset progress for a book", async () => {
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP3 }); // Set to last section
-    await concept.markFinished({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP }); // Mark finished
-
-    const result = await concept.resetProgress({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(result, {});
-
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(progress?.currentPlace, TEST_SECTION_HP1);
-    assertEquals(progress?.finished, false);
-  });
-
-  await t.step("should return error if no progress exists when resetting", async () => {
-    const result = await concept.resetProgress({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_HP}.` });
-  });
-
-  // --- Test removeFromLibrary ---
-  await t.step("should remove a book from library and delete associated progress", async () => {
-    await concept.addToLibrary({ owner: TEST_USER_BOB, book: TEST_BOOK_HP });
-    await concept.openBook({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    const initialProgress = await concept.progresses.findOne({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(initialProgress, null, "Progress should exist before removal");
-
-    const result = await concept.removeFromLibrary({ owner: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertEquals(result, {});
-
-    const library = await concept.libraries.findOne({ _id: TEST_USER_BOB });
-    assertEquals(library, null, "Library should be removed if it's empty, or book removed from array");
-    const progressAfter = await concept.progresses.findOne({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertEquals(progressAfter, null, "Progress should be deleted after removing from library");
-  });
-
-  await t.step("should return error if book is not in library when removing", async () => {
-    const result = await concept.removeFromLibrary({ owner: TEST_USER_ALICE, book: "nonExistentBook" as ID });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book nonExistentBook is not in user ${TEST_USER_ALICE}'s library.` });
-  });
-
-  // --- Test Queries ---
-  await t.step("_getLibrary should return books in library", async () => {
-    const result = await concept._getLibrary({ owner: TEST_USER_ALICE });
-    assertEquals(result, { books: [TEST_BOOK_HP, TEST_BOOK_LOTR].sort() }); // Assuming previous tests added these
-  });
-
-  await t.step("_getLibrary should return empty array for user with no library", async () => {
-    const result = await concept._getLibrary({ owner: "user:NoLibrary" as ID });
-    assertEquals(result, { books: [] });
-  });
-
-  await t.step("_getProgress should return current progress", async () => {
-    // Ensure some progress exists
-    await concept.openBook({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP2 });
-
-    const result = await concept._getProgress({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(result, { currentPlace: TEST_SECTION_HP2, finished: false });
-  });
-
-  await t.step("_getProgress should return error if no progress exists", async () => {
-    const result = await concept._getProgress({ reader: TEST_USER_BOB, book: TEST_BOOK_LOTR });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_LOTR}.` });
-  });
-
-  await t.step("_getBookStructure should return book sections", async () => {
-    const result = await concept._getBookStructure({ book: TEST_BOOK_HP });
-    assertEquals(result, { sections: [TEST_SECTION_HP1, TEST_SECTION_HP2, TEST_SECTION_HP3] });
-  });
-
-  await t.step("_getBookStructure should return error if structure not found", async () => {
-    const result = await concept._getBookStructure({ book: "book:Unknown" as ID });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book structure for book:Unknown not found.` });
-  });
-
-  // --- Trace: Fulfilling the Principle ---
-  await t.step("Principle: user reads a book and marks it complete", async () => {
-    const TRACE_USER = "user:Trace" as ID;
-    const TRACE_BOOK = "book:TraceBook" as ID;
-    const TRACE_SECTION_1 = "section:Trace_Ch1" as ID;
-    const TRACE_SECTION_2 = "section:Trace_Ch2" as ID;
-    const TRACE_SECTION_3 = "section:Trace_Ch3" as ID;
-
-    // 1. Setup: A book is divided into sections with a defined order.
-    await insertBookStructure(concept.bookStructures, TRACE_BOOK, [
-      TRACE_SECTION_1,
-      TRACE_SECTION_2,
-      TRACE_SECTION_3,
-    ]);
-
-    // 2. A user opens a book from their library.
-    await concept.addToLibrary({ owner: TRACE_USER, book: TRACE_BOOK });
-    const openResult = await concept.openBook({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(openResult, {});
-
-    let progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.currentPlace, TRACE_SECTION_1, "Initial current place should be first section");
-    assertEquals(progress?.finished, false);
-
-    // 3. The user moves through the sections, and their position is stored.
-    await concept.nextSection({ reader: TRACE_USER, book: TRACE_BOOK });
-    progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.currentPlace, TRACE_SECTION_2, "Should move to next section");
-
-    await concept.jumpTo({ reader: TRACE_USER, book: TRACE_BOOK, section: TRACE_SECTION_3 });
-    progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.currentPlace, TRACE_SECTION_3, "Should jump to specified section");
-
-    // 4. When finished reading, the book is marked completed.
-    const markFinishedResult = await concept.markFinished({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(markFinishedResult, {});
-
-    progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.finished, true, "Book should be marked as finished");
-
-    // Verify final state
-    const library = await concept.libraries.findOne({ _id: TRACE_USER });
-    assertEquals(library?.books.includes(TRACE_BOOK), true);
-    assertEquals(progress?.reader, TRACE_USER);
-    assertEquals(progress?.book, TRACE_BOOK);
-    assertEquals(progress?.currentPlace, TRACE_SECTION_3);
-    assertEquals(progress?.finished, true);
-  });
-
-  await client.close();
-});
-```
-
-```trace
-# trace: Principle for BookReading
-
-**Scenario**: Alice wants to read "Harry Potter and the Sorcerer's Stone" and track her progress.
-
-1.  **Preparation (External to BookReading, but sets up necessary state):**
-    *   A `BookStructure` for "Harry Potter" (ID: `book:HarryPotter`) is defined, consisting of sections: `section:HP_Chapter1`, `section:HP_Chapter2`, `section:HP_Chapter3`. (This is handled by manual insertion in the test setup).
-
-2.  **`addToLibrary`**: Alice adds "Harry Potter" to her library.
-    *   **Action**: `BookReading.addToLibrary(owner: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: Alice's `Library` document now contains `book:HarryPotter`.
-
-3.  **`openBook`**: Alice decides to start reading "Harry Potter".
-    *   **Action**: `BookReading.openBook(reader: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: A `Progress` document is created for Alice and "Harry Potter", with `currentPlace` set to `section:HP_Chapter1` (the first section from the `BookStructure`) and `finished` set to `false`.
-
-4.  **`nextSection`**: Alice reads Chapter 1 and wants to move to Chapter 2.
-    *   **Action**: `BookReading.nextSection(reader: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: Alice's `Progress` for "Harry Potter" has `currentPlace` updated to `section:HP_Chapter2`. `finished` remains `false`.
-
-5.  **`jumpTo`**: Alice skips ahead to Chapter 3 (perhaps she's re-reading).
-    *   **Action**: `BookReading.jumpTo(reader: "user:Alice", book: "book:HarryPotter", section: "section:HP_Chapter3")`
-    *   **Expected State**: Alice's `Progress` for "Harry Potter" has `currentPlace` updated to `section:HP_Chapter3`. `finished` remains `false` (as jumping implies active reading).
-
-6.  **`markFinished`**: Alice finishes reading Chapter 3 and completes the book.
-    *   **Action**: `BookReading.markFinished(reader: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: Alice's `Progress` for "Harry Potter" has `finished` updated to `true`. `currentPlace` remains `section:HP_Chapter3`.
-
-**Verification**:
-*   Alice's library contains "Harry Potter".
-*   Alice's reading progress for "Harry Potter" correctly reflects that she finished at `section:HP_Chapter3` and the book is marked as `finished: true`.
-```
-# response:
-
-```typescript
-// file: src/BookReading/BookReadingConcept.ts
-import { Collection, Db } from "npm:mongodb";
-import { Empty, ID } from "@utils/types.ts";
-import { freshID } from "@utils/database.ts";
-
-// Declare collection prefix, use concept name
-const PREFIX = "BookReading" + ".";
-
-// Generic types of this concept
-type User = ID;
-type Book = ID;
-type Section = ID;
-
-/**
- * State: a set of Libraries with an owner of type User and a set of Books
- *
- * Represents a user's personal collection of books.
- * The _id of this document is the User's ID.
- */
-interface LibraryDoc {
-  _id: User; // The ID of the user who owns this library
-  books: Book[]; // An array of book IDs in their library
-}
-
-/**
- * State: a set of BookStructures with a book of type Book and a set of Sections
- *
- * Defines the internal structure (ordered sections) of a book.
- * The _id of this document is the Book's ID.
- */
-interface BookStructureDoc {
-  _id: Book; // The ID of the book
-  sections: Section[]; // An ordered list of section IDs for this book
-}
-
-/**
- * State: a set of Progresses with a reader of type User, a book of type Book,
- * a currentPlace of type Section, and a finished of type Flag (boolean)
- *
- * Tracks a user's reading progress for a specific book.
- * The _id is a unique identifier for this progress entry.
- */
-interface ProgressDoc {
-  _id: ID; // Unique ID for this specific progress entry (e.g., generated freshID)
-  reader: User; // The ID of the user reading the book
-  book: Book; // The ID of the book being read
-  currentPlace: Section; // The ID of the current section the user is at
-  finished: boolean; // True if the user has completed the book
-}
-
-/**
- * concept: BookReading
- * purpose: Lets users read a book in-app and track their progress
- * principle: A user opens a book from their library. The book is divided into sections
- * (e.g., paragraphs, pages, chapters) with a defined order. The user moves through the sections,
- * and their position is stored. When finished reading, the book is marked completed.
- */
-export default class BookReadingConcept {
-  // MongoDB collections for each state component
-  libraries: Collection<LibraryDoc>;
-  bookStructures: Collection<BookStructureDoc>;
-  progresses: Collection<ProgressDoc>;
-
-  constructor(private readonly db: Db) {
-    this.libraries = this.db.collection(PREFIX + "libraries");
-    this.bookStructures = this.db.collection(PREFIX + "bookStructures");
-    this.progresses = this.db.collection(PREFIX + "progresses");
-
-    // Ensure indexes for efficient lookups and to maintain data integrity
-    // A unique index on reader and book ensures a user has only one progress entry per book.
-    this.progresses.createIndex({ reader: 1, book: 1 }, { unique: true, background: true });
-    // An index on books within libraries for faster checking if a book exists in a user's library.
-    // This supports the `addToLibrary` and `openBook` preconditions efficiently.
-    this.libraries.createIndex({ "books": 1 }, { background: true });
-    // An index on owner for libraries for faster lookup of a user's library.
-    this.libraries.createIndex({ "_id": 1 }, { unique: true, background: true });
-    // An index on book for bookStructures for faster lookup of a book's structure.
-    this.bookStructures.createIndex({ "_id": 1 }, { unique: true, background: true });
-  }
-
-  /**
-   * addToLibrary
-   * Adds a book to a user's personal library.
-   *
-   * @param {User} owner - The user who is adding the book.
-   * @param {Book} book - The book to add to the library.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: The book is not already in the owner's library.
-   * effects: The book is added to the owner's library. If the library doesn't exist, it's created.
-   */
-  async addToLibrary({ owner, book }: { owner: User; book: Book }): Promise<Empty | { error: string }> {
-    // effects: add book to owner's library. Use $addToSet to prevent duplicates.
-    // The query part `{ _id: owner, books: { $ne: book } }` attempts to find the document
-    // AND ensures the book is NOT already present, fulfilling the 'requires'.
-    const result = await this.libraries.updateOne(
-      { _id: owner, books: { $ne: book } },
-      { $addToSet: { books: book } },
-      { upsert: true } // Create the library document if it doesn't exist
-    );
-
-    // If no document was matched and no document was upserted, it implies the book was already in the library
-    // and thus the $ne: book condition was not met for an existing document.
-    if (result.matchedCount === 0 && result.upsertedCount === 0) {
-      // Confirm it's truly due to the book already being there, as per the 'requires'
-      const existingLibrary = await this.libraries.findOne({ _id: owner, books: book });
-      if (existingLibrary) {
-        return { error: `Book ${book} is already in user ${owner}'s library.` };
-      }
-      // Fallback for unexpected cases
-      return { error: `Failed to add book ${book} to library for user ${owner} for an unknown reason.` };
-    }
-    return {};
-  }
-
-  /**
-   * openBook
-   * Initiates reading progress for a user on a specific book. If progress already exists, does nothing.
-   *
-   * @param {User} reader - The user opening the book.
-   * @param {Book} book - The book to open.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: The book is in the reader's library, and a BookStructure for the book exists with sections.
-   * effects: If a Progress entry for the reader and book already exists, do nothing.
-   *   Otherwise, create a new Progress entry with the currentPlace set to the first section of the book, and finished = false.
-   */
-  async openBook({ reader, book }: { reader: User; book: Book }): Promise<Empty | { error: string }> {
-    // requires: book is in reader's library
-    const readerLibrary = await this.libraries.findOne({ _id: reader, books: book });
-    if (!readerLibrary) {
-      return { error: `Book ${book} is not in user ${reader}'s library.` };
-    }
-
-    // requires: BookStructure for the book must exist to determine the first section
-    const bookStructure = await this.bookStructures.findOne({ _id: book });
-    if (!bookStructure || bookStructure.sections.length === 0) {
-      return { error: `Book structure for ${book} not found or has no sections defined.` };
-    }
-    const firstSection = bookStructure.sections[0];
-
-    // Check if progress already exists for this reader and book
-    const existingProgress = await this.progresses.findOne({ reader, book });
-    if (existingProgress) {
-      // effects: if a Progress exists, do nothing
-      return {};
-    }
-
-    // effects: Else create Progress with currentPlace being the first section of the book and finished = false
-    const newProgress: ProgressDoc = {
-      _id: freshID(),
-      reader,
-      book,
-      currentPlace: firstSection,
-      finished: false,
-    };
-    const result = await this.progresses.insertOne(newProgress);
-    if (!result.acknowledged) {
-      return { error: `Failed to create progress for user ${reader} on book ${book}.` };
-    }
-    return {};
-  }
-
-  /**
-   * jumpTo
-   * Allows a user to jump to a specific section in a book they are reading.
-   *
-   * @param {User} reader - The user.
-   * @param {Book} book - The book.
-   * @param {Section} section - The section to jump to.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: The book is in the reader's library, a Progress entry exists for the reader and book,
-   *   and the specified Section exists within the book's structure.
-   * effects: Sets the Progress.currentPlace to the specified section and sets finished = false.
-   */
-  async jumpTo({ reader, book, section }: { reader: User; book: Book; section: Section }): Promise<Empty | { error: string }> {
-    // requires: book is in reader's library
-    const readerLibrary = await this.libraries.findOne({ _id: reader, books: book });
-    if (!readerLibrary) {
-      return { error: `Book ${book} is not in user ${reader}'s library.` };
-    }
-
-    // requires: Progress exists for the reader and book
-    const existingProgress = await this.progresses.findOne({ reader, book });
-    if (!existingProgress) {
-      return { error: `No reading progress found for user ${reader} on book ${book}.` };
-    }
-
-    // requires: Section exists for book (i.e., is part of the book's structure)
-    const bookStructure = await this.bookStructures.findOne({ _id: book, sections: section });
-    if (!bookStructure) {
-      return { error: `Section ${section} does not exist in book ${book}.` };
-    }
-
-    // effects: set Progress.currentPlace to section and finished = false
-    // (Jumping to a section typically implies the user is still reading, so not finished)
-    const result = await this.progresses.updateOne(
-      { reader, book },
-      { $set: { currentPlace: section, finished: false } }
-    );
-
-    if (result.matchedCount === 0) {
-      // This should ideally not happen if existingProgress was found, due to the unique index on reader+book.
-      return { error: `Failed to update progress for user ${reader} on book ${book}.` };
-    }
-    return {};
-  }
-
-  /**
-   * nextSection
-   * Advances the user's reading progress to the next sequential section in the book.
-   *
-   * @param {User} reader - The user.
-   * @param {Book} book - The book.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: A Progress entry exists for the reader and book, and a subsequent section exists for the book.
-   * effects: The currentPlace is set to the next section in the book's section list, and finished = false.
-   */
-  async nextSection({ reader, book }: { reader: User; book: Book }): Promise<Empty | { error: string }> {
-    // requires: Progress exists for the reader and book
-    const existingProgress = await this.progresses.findOne({ reader, book });
-    if (!existingProgress) {
-      return { error: `No reading progress found for user ${reader} on book ${book}.` };
-    }
-
-    // requires: Book structure must exist to determine the next section
-    const bookStructure = await this.bookStructures.findOne({ _id: book });
-    if (!bookStructure || bookStructure.sections.length === 0) {
-      return { error: `Book structure for ${book} not found or has no sections.` };
-    }
-
-    const currentIndex = bookStructure.sections.indexOf(existingProgress.currentPlace);
-    if (currentIndex === -1) {
-      return { error: `Current place ${existingProgress.currentPlace} not found in book ${book}'s structure.` };
-    }
-    if (currentIndex >= bookStructure.sections.length - 1) {
-      return { error: `No subsequent section exists for book ${book}. User is at the last section.` };
-    }
-
-    const nextSectionId = bookStructure.sections[currentIndex + 1];
-
-    // effects: currentPlace is set to the next section in the book's section list and finished = false
-    const result = await this.progresses.updateOne(
-      { reader, book },
-      { $set: { currentPlace: nextSectionId, finished: false } } // Reset finished if moving forward
-    );
-
-    if (result.matchedCount === 0) {
-      // This should ideally not happen if existingProgress was found.
-      return { error: `Failed to update progress for user ${reader} on book ${book}.` };
-    }
-    return {};
-  }
-
-  /**
-   * markFinished
-   * Marks a book as completed for a specific user.
-   *
-   * @param {User} reader - The user.
-   * @param {Book} book - The book.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: A Progress entry exists for the reader and book, and finished = false.
-   * effects: Sets the finished flag for the book to true in the user's progress.
-   */
-  async markFinished({ reader, book }: { reader: User; book: Book }): Promise<Empty | { error: string }> {
-    // requires: Progress exists for the reader and book
-    const existingProgress = await this.progresses.findOne({ reader, book });
-    if (!existingProgress) {
-      return { error: `No reading progress found for user ${reader} on book ${book}.` };
-    }
-
-    // requires: finished = false (cannot mark as finished if already finished)
-    if (existingProgress.finished) {
-      return { error: `Book ${book} is already marked as finished for user ${reader}.` };
-    }
-
-    // effects: set finished = true
-    const result = await this.progresses.updateOne(
-      { reader, book },
-      { $set: { finished: true } }
-    );
-
-    if (result.matchedCount === 0) {
-      // This should ideally not happen if existingProgress was found.
-      return { error: `Failed to mark book ${book} as finished for user ${reader}.` };
-    }
-    return {};
-  }
-
-  /**
-   * resetProgress
-   * Resets a user's reading progress for a book back to the beginning.
-   *
-   * @param {User} reader - The user.
-   * @param {Book} book - The book.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: A Progress entry exists for the reader and book, and a BookStructure for the book exists with sections.
-   * effects: Sets the currentPlace to the first section of the book and finished = false.
-   */
-  async resetProgress({ reader, book }: { reader: User; book: Book }): Promise<Empty | { error: string }> {
-    // requires: Progress exists for the reader and book
-    const existingProgress = await this.progresses.findOne({ reader, book });
-    if (!existingProgress) {
-      return { error: `No reading progress found for user ${reader} on book ${book}.` };
-    }
-
-    // requires: BookStructure for the book must exist to get the first section
-    const bookStructure = await this.bookStructures.findOne({ _id: book });
-    if (!bookStructure || bookStructure.sections.length === 0) {
-      return { error: `Book structure for ${book} not found or has no sections.` };
-    }
-    const firstSection = bookStructure.sections[0];
-
-    // effects: set currentPlace to the first section of the book and finished = false
-    const result = await this.progresses.updateOne(
-      { reader, book },
-      { $set: { currentPlace: firstSection, finished: false } }
-    );
-
-    if (result.matchedCount === 0) {
-      // This should ideally not happen if existingProgress was found.
-      return { error: `Failed to reset progress for user ${reader} on book ${book}.` };
-    }
-    return {};
-  }
-
-  /**
-   * removeFromLibrary
-   * Removes a book from a user's library and also deletes their reading progress for that book.
-   *
-   * @param {User} owner - The user whose library the book is being removed from.
-   * @param {Book} book - The book to remove.
-   * @returns {Empty | {error: string}} An empty object on success, or an error object.
-   *
-   * requires: The book is in the owner's library.
-   * effects: The book is removed from the owner's library. Any Progress entry for this owner and book is also removed.
-   */
-  async removeFromLibrary({ owner, book }: { owner: User; book: Book }): Promise<Empty | { error: string }> {
-    // requires: book is in owner's library
-    const ownerLibrary = await this.libraries.findOne({ _id: owner, books: book });
-    if (!ownerLibrary) {
-      return { error: `Book ${book} is not in user ${owner}'s library.` };
-    }
-
-    // effects: remove book from owner's library
-    const updateResult = await this.libraries.updateOne(
-      { _id: owner },
-      { $pull: { books: book } }
-    );
-
-    if (updateResult.matchedCount === 0) {
-      // This case should ideally not happen if ownerLibrary was found, but a check is good.
-      return { error: `Failed to remove book ${book} from user ${owner}'s library.` };
-    }
-
-    // effects: remove Progress for the owner and book if it exists
-    // We use deleteMany to handle potential edge cases, though unique index prevents multiple for a reader/book.
-    await this.progresses.deleteMany({ reader: owner, book });
-
-    return {};
-  }
-
-  // --- Concept Queries ---
-
-  /**
-   * _getLibrary
-   * Returns the list of books in a user's library.
-   *
-   * @param {User} owner - The user whose library to retrieve.
-   * @returns {{books: Book[]} | {error: string}} An object containing the list of books, or an error object.
-   */
-  async _getLibrary({ owner }: { owner: User }): Promise<{ books: Book[] } | { error: string }> {
-    const library = await this.libraries.findOne({ _id: owner });
-    if (!library) {
-      // An empty library is a valid state for a user with no books, not an error.
-      return { books: [] };
-    }
-    return { books: library.books };
-  }
-
-  /**
-   * _getProgress
-   * Returns the reading progress (current place and finished status) for a user on a specific book.
-   *
-   * @param {User} reader - The user.
-   * @param {Book} book - The book.
-   * @returns {{currentPlace: Section, finished: boolean} | {error: string}} An object with progress details, or an error object.
-   */
-  async _getProgress({ reader, book }: { reader: User; book: Book }): Promise<{ currentPlace: Section; finished: boolean } | { error: string }> {
-    const progress = await this.progresses.findOne({ reader, book });
-    if (!progress) {
-      return { error: `No reading progress found for user ${reader} on book ${book}.` };
-    }
-    return { currentPlace: progress.currentPlace, finished: progress.finished };
-  }
-
-  /**
-   * _getBookStructure
-   * Returns the ordered list of sections for a given book.
-   *
-   * @param {Book} book - The book.
-   * @returns {{sections: Section[]} | {error: string}} An object with the book's sections, or an error object.
-   */
-  async _getBookStructure({ book }: { book: Book }): Promise<{ sections: Section[] } | { error: string }> {
-    const structure = await this.bookStructures.findOne({ _id: book });
-    if (!structure) {
-      return { error: `Book structure for ${book} not found.` };
-    }
-    return { sections: structure.sections };
-  }
-}
-```
-
-```typescript
-// file: src/BookReading/BookReadingConcept.test.ts
-import { Collection } from "npm:mongodb";
-import { assertEquals, assertNotEquals, assertObjectMatch } from "jsr:@std/assert";
-import { testDb } from "@utils/database.ts";
-import { ID } from "@utils/types.ts";
-
-import BookReadingConcept from "./BookReadingConcept.ts";
-
-// Define test IDs
-const TEST_USER_ALICE = "user:Alice" as ID;
-const TEST_USER_BOB = "user:Bob" as ID;
-const TEST_BOOK_HP = "book:HarryPotter" as ID;
-const TEST_BOOK_LOTR = "book:LordOfTheRings" as ID;
-const TEST_SECTION_HP1 = "section:HP_Chapter1" as ID;
-const TEST_SECTION_HP2 = "section:HP_Chapter2" as ID;
-const TEST_SECTION_HP3 = "section:HP_Chapter3" as ID;
-const TEST_SECTION_LOTR1 = "section:LOTR_Part1" as ID;
-const TEST_SECTION_LOTR2 = "section:LOTR_Part2" as ID;
-
-// Helper to manually insert a book structure for testing, as this concept doesn't manage book structure creation
-async function insertBookStructure(
-  bookStructuresCollection: Collection<any>,
-  bookId: Book,
-  sections: Section[],
-) {
-  // Overwrite if exists, ensuring a clean state for the book's structure for each test run if needed
-  await bookStructuresCollection.replaceOne(
-    { _id: bookId },
-    { _id: bookId, sections: sections },
-    { upsert: true },
-  );
-}
-
-Deno.test("BookReadingConcept", async (t) => {
+// --- Test Data ---
+const USER_ALICE = "user:Alice" as ID;
+const USER_BOB = "user:Bob" as ID;
+
+const BOOK_LORD_OF_RINGS = "book:LordOfTheRings" as ID;
+const BOOK_HOBBIT = "book:TheHobbit" as ID;
+
+const SECTION_LOTR_PROLOGUE = "section:LOTR_Prologue" as ID;
+const SECTION_LOTR_CHAP1 = "section:LOTR_Chap1" as ID;
+const SECTION_LOTR_CHAP2 = "section:LOTR_Chap2" as ID;
+const SECTION_LOTR_CHAP3 = "section:LOTR_Chap3" as ID;
+const SECTION_LOTR_EPILOGUE = "section:LOTR_Epilogue" as ID;
+
+const BOOK_STRUCTURE_LOTR = {
+  _id: BOOK_LORD_OF_RINGS,
+  sections: [
+    SECTION_LOTR_PROLOGUE,
+    SECTION_LOTR_CHAP1,
+    SECTION_LOTR_CHAP2,
+    SECTION_LOTR_CHAP3,
+    SECTION_LOTR_EPILOGUE,
+  ],
+};
+
+const BOOK_STRUCTURE_HOBBIT = {
+  _id: BOOK_HOBBIT,
+  sections: [
+    "section:Hobbit_Chap1" as ID,
+    "section:Hobbit_Chap2" as ID,
+  ],
+};
+
+const UNKNOWN_BOOK = "book:Unknown" as ID;
+const UNKNOWN_SECTION = "section:Unknown" as ID;
+
+Deno.test("BookReadingConcept - Core Functionality", async (t) => {
   const [db, client] = await testDb();
   const concept = new BookReadingConcept(db);
 
-  // Setup book structures for testing
-  await insertBookStructure(concept.bookStructures, TEST_BOOK_HP, [
-    TEST_SECTION_HP1,
-    TEST_SECTION_HP2,
-    TEST_SECTION_HP3,
-  ]);
-  await insertBookStructure(concept.bookStructures, TEST_BOOK_LOTR, [
-    TEST_SECTION_LOTR1,
-    TEST_SECTION_LOTR2,
-  ]);
+  // Pre-populate some book structures for testing
+  await concept.bookStructures.insertOne(BOOK_STRUCTURE_LOTR);
+  await concept.bookStructures.insertOne(BOOK_STRUCTURE_HOBBIT);
 
-  // --- Test addToLibrary ---
-  await t.step("should add a book to an owner's library", async () => {
-    const result = await concept.addToLibrary({ owner: TEST_USER_ALICE, book: TEST_BOOK_HP });
+  await t.step("addToLibrary: should add a book to a user's library", async () => {
+    const result = await concept.addToLibrary({ owner: USER_ALICE, book: BOOK_LORD_OF_RINGS });
     assertEquals(result, {});
 
-    const library = await concept.libraries.findOne({ _id: TEST_USER_ALICE });
-    assertEquals(library?.books.includes(TEST_BOOK_HP), true);
+    const library = await concept._getLibrary({ owner: USER_ALICE });
+    assertObjectMatch(library as object, { books: [BOOK_LORD_OF_RINGS] });
   });
 
-  await t.step("should return error if book is already in owner's library", async () => {
-    // Attempt to add the same book again
-    const result = await concept.addToLibrary({ owner: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book ${TEST_BOOK_HP} is already in user ${TEST_USER_ALICE}'s library.` });
-  });
-
-  await t.step("should add another book to the same owner's library", async () => {
-    const result = await concept.addToLibrary({ owner: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
+  await t.step("addToLibrary: should add another book to an existing library", async () => {
+    const result = await concept.addToLibrary({ owner: USER_ALICE, book: BOOK_HOBBIT });
     assertEquals(result, {});
 
-    const library = await concept.libraries.findOne({ _id: TEST_USER_ALICE });
-    assertEquals(library?.books.includes(TEST_BOOK_LOTR), true);
-    assertEquals(library?.books.length, 2);
+    const library = await concept._getLibrary({ owner: USER_ALICE });
+    assertObjectMatch(library as object, { books: [BOOK_LORD_OF_RINGS, BOOK_HOBBIT] });
   });
 
-  // --- Test openBook ---
-  await t.step("should create new progress when opening a book for the first time", async () => {
-    const result = await concept.openBook({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
+  await t.step("addToLibrary: should not add the same book twice", async () => {
+    const result = await concept.addToLibrary({ owner: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(result as object, { error: `Book ${BOOK_LORD_OF_RINGS} is already in user ${USER_ALICE}'s library.` });
+
+    const library = await concept._getLibrary({ owner: USER_ALICE });
+    assertEquals((library as { books: ID[] }).books.length, 2); // Still 2 books
+  });
+
+  await t.step("openBook: should create new progress for a user and book", async () => {
+    const result = await concept.openBook({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
     assertEquals(result, {});
 
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertNotEquals(progress, null);
-    assertEquals(progress?.currentPlace, TEST_SECTION_HP1);
-    assertEquals(progress?.finished, false);
+    const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_PROLOGUE, finished: false });
   });
 
-  await t.step("should do nothing if progress already exists when opening a book", async () => {
-    const initialProgress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertNotEquals(initialProgress, null);
+  await t.step("openBook: should not create progress if already exists", async () => {
+    const initialProgress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertEquals((initialProgress as { currentPlace: ID }).currentPlace, SECTION_LOTR_PROLOGUE);
 
-    const result = await concept.openBook({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(result, {}); // Should indicate success (doing nothing is a successful outcome here)
+    const result = await concept.openBook({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertEquals(result, {}); // Should still return success as per spec
 
-    const finalProgress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(finalProgress, initialProgress, "Progress should not have changed");
+    const progressAfter = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(progressAfter as object, initialProgress as object); // State should be unchanged
   });
 
-  await t.step("should return error if book is not in reader's library when opening", async () => {
-    const result = await concept.openBook({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book ${TEST_BOOK_HP} is not in user ${TEST_USER_BOB}'s library.` });
+  await t.step("openBook: should fail if book is not in reader's library", async () => {
+    const result = await concept.openBook({ reader: USER_BOB, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(result as object, { error: `Book ${BOOK_LORD_OF_RINGS} is not in user ${USER_BOB}'s library.` });
   });
 
-  await t.step("should return error if book structure is missing or empty when opening", async () => {
-    const NON_EXISTENT_BOOK = "book:NoStructure" as ID;
-    await concept.addToLibrary({ owner: TEST_USER_ALICE, book: NON_EXISTENT_BOOK }); // Add to library first
-
-    const result = await concept.openBook({ reader: TEST_USER_ALICE, book: NON_EXISTENT_BOOK });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book structure for ${NON_EXISTENT_BOOK} not found or has no sections defined.` });
-
-    // Clean up
-    await concept.removeFromLibrary({ owner: TEST_USER_ALICE, book: NON_EXISTENT_BOOK });
+  await t.step("openBook: should fail if book structure not found", async () => {
+    await concept.addToLibrary({ owner: USER_BOB, book: UNKNOWN_BOOK }); // Add to library for prerequisite
+    const result = await concept.openBook({ reader: USER_BOB, book: UNKNOWN_BOOK });
+    assertObjectMatch(result as object, { error: `Book structure for ${UNKNOWN_BOOK} not found or has no sections defined.` });
   });
 
-  // --- Test jumpTo ---
-  await t.step("should update currentPlace when jumping to a valid section", async () => {
-    const result = await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP2 });
+  await t.step("jumpTo: should update current place", async () => {
+    const result = await concept.jumpTo({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS, section: SECTION_LOTR_CHAP3 });
     assertEquals(result, {});
 
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(progress?.currentPlace, TEST_SECTION_HP2);
-    assertEquals(progress?.finished, false, "Should set finished to false when jumping");
+    const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_CHAP3, finished: false });
   });
 
-  await t.step("should return error if book is not in reader's library when jumping", async () => {
-    const result = await concept.jumpTo({ reader: TEST_USER_BOB, book: TEST_BOOK_HP, section: TEST_SECTION_HP1 });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book ${TEST_BOOK_HP} is not in user ${TEST_USER_BOB}'s library.` });
+  await t.step("jumpTo: should fail if section does not exist in book", async () => {
+    const result = await concept.jumpTo({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS, section: UNKNOWN_SECTION });
+    assertObjectMatch(result as object, { error: `Section ${UNKNOWN_SECTION} does not exist in book ${BOOK_LORD_OF_RINGS}.` });
   });
 
-  await t.step("should return error if no progress exists when jumping", async () => {
-    await concept.addToLibrary({ owner: TEST_USER_BOB, book: TEST_BOOK_LOTR }); // Book in library, but not opened yet
-    const result = await concept.jumpTo({ reader: TEST_USER_BOB, book: TEST_BOOK_LOTR, section: TEST_SECTION_LOTR1 });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_LOTR}.` });
+  await t.step("jumpTo: should fail if no progress exists for book", async () => {
+    // USER_BOB has BOOK_LORD_OF_RINGS in library, but hasn't opened it yet
+    await concept.addToLibrary({ owner: USER_BOB, book: BOOK_LORD_OF_RINGS });
+    const result = await concept.jumpTo({ reader: USER_BOB, book: BOOK_LORD_OF_RINGS, section: SECTION_LOTR_CHAP1 });
+    assertObjectMatch(result as object, { error: `No reading progress found for user ${USER_BOB} on book ${BOOK_LORD_OF_RINGS}.` });
   });
 
-  await t.step("should return error if target section does not exist in book", async () => {
-    const result = await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: "nonExistentSection" as ID });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Section nonExistentSection does not exist in book ${TEST_BOOK_HP}.` });
-  });
-
-  // --- Test nextSection ---
-  await t.step("should advance currentPlace to the next section", async () => {
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP1 }); // Set to first section
-    const result = await concept.nextSection({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
+  await t.step("nextSection: should move to the subsequent section", async () => {
+    // Current place for USER_ALICE, LOTR is SECTION_LOTR_CHAP3
+    const result = await concept.nextSection({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
     assertEquals(result, {});
 
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(progress?.currentPlace, TEST_SECTION_HP2);
-    assertEquals(progress?.finished, false, "Should set finished to false when moving to next");
+    const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_EPILOGUE, finished: false });
   });
 
-  await t.step("should return error if no next section exists", async () => {
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP3 }); // Set to last section
-    const result = await concept.nextSection({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No subsequent section exists for book ${TEST_BOOK_HP}. User is at the last section.` });
+  await t.step("nextSection: should fail if no subsequent section exists (already at last section)", async () => {
+    // USER_ALICE, LOTR is at SECTION_LOTR_EPILOGUE
+    const result = await concept.nextSection({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(result as object, { error: `No subsequent section exists for book ${BOOK_LORD_OF_RINGS}. User is at the last section.` });
   });
 
-  await t.step("should return error if no progress exists when moving to next section", async () => {
-    const result = await concept.nextSection({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_HP}.` });
+  await t.step("nextSection: should fail if no progress exists", async () => {
+    const result = await concept.nextSection({ reader: USER_BOB, book: BOOK_HOBBIT }); // Bob has Hobit in library, but no progress
+    assertObjectMatch(result as object, { error: `No reading progress found for user ${USER_BOB} on book ${BOOK_HOBBIT}.` });
   });
 
-  // --- Test markFinished ---
-  await t.step("should mark a book as finished", async () => {
-    // Ensure progress and not finished for LOTR for Alice
-    await concept.openBook({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR, section: TEST_SECTION_LOTR2 });
-    const result = await concept.markFinished({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
+  await t.step("markFinished: should mark the book as finished", async () => {
+    const result = await concept.markFinished({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
     assertEquals(result, {});
 
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
-    assertEquals(progress?.finished, true);
+    const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_EPILOGUE, finished: true });
   });
 
-  await t.step("should return error if book is already marked finished", async () => {
-    // Already marked finished by previous step
-    const result = await concept.markFinished({ reader: TEST_USER_ALICE, book: TEST_BOOK_LOTR });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book ${TEST_BOOK_LOTR} is already marked as finished for user ${TEST_USER_ALICE}.` });
+  await t.step("markFinished: should fail if book is already marked finished", async () => {
+    const result = await concept.markFinished({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(result as object, { error: `Book ${BOOK_LORD_OF_RINGS} is already marked as finished for user ${USER_ALICE}.` });
   });
 
-  await t.step("should return error if no progress exists when marking finished", async () => {
-    const result = await concept.markFinished({ reader: TEST_USER_BOB, book: TEST_BOOK_LOTR });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_LOTR}.` });
+  await t.step("markFinished: should fail if no progress exists", async () => {
+    const result = await concept.markFinished({ reader: USER_BOB, book: BOOK_LORD_OF_RINGS }); // Bob has book but no progress
+    assertObjectMatch(result as object, { error: `No reading progress found for user ${USER_BOB} on book ${BOOK_LORD_OF_RINGS}.` });
   });
 
-  // --- Test resetProgress ---
-  await t.step("should reset progress for a book", async () => {
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP3 }); // Set to last section
-    await concept.markFinished({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP }); // Mark finished
-
-    const result = await concept.resetProgress({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
+  await t.step("resetProgress: should set currentPlace to first section and finished to false", async () => {
+    const result = await concept.resetProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
     assertEquals(result, {});
 
-    const progress = await concept.progresses.findOne({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(progress?.currentPlace, TEST_SECTION_HP1);
-    assertEquals(progress?.finished, false);
+    const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_PROLOGUE, finished: false });
   });
 
-  await t.step("should return error if no progress exists when resetting", async () => {
-    const result = await concept.resetProgress({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_HP}.` });
+  await t.step("resetProgress: should fail if no progress exists", async () => {
+    const result = await concept.resetProgress({ reader: USER_BOB, book: BOOK_HOBBIT });
+    assertObjectMatch(result as object, { error: `No reading progress found for user ${USER_BOB} on book ${BOOK_HOBBIT}.` });
   });
 
-  // --- Test removeFromLibrary ---
-  await t.step("should remove a book from library and delete associated progress", async () => {
-    // Setup for BOB
-    await concept.addToLibrary({ owner: TEST_USER_BOB, book: TEST_BOOK_HP });
-    await concept.openBook({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    const initialProgress = await concept.progresses.findOne({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertNotEquals(initialProgress, null, "Progress should exist before removal");
+  await t.step("removeFromLibrary: should remove book from library and delete progress", async () => {
+    // Alice has BOOK_HOBBIT and no progress for it yet. Let's create progress first.
+    await concept.openBook({ reader: USER_ALICE, book: BOOK_HOBBIT });
+    const progressBefore = await concept._getProgress({ reader: USER_ALICE, book: BOOK_HOBBIT });
+    assertNotEquals(progressBefore as { error?: string }).error, "No reading progress found..."); // Ensure progress exists
 
-    const result = await concept.removeFromLibrary({ owner: TEST_USER_BOB, book: TEST_BOOK_HP });
+    const result = await concept.removeFromLibrary({ owner: USER_ALICE, book: BOOK_HOBBIT });
     assertEquals(result, {});
 
-    const library = await concept.libraries.findOne({ _id: TEST_USER_BOB });
-    // If it was the only book, the library doc might be deleted, or book removed from array.
-    // For now, checking if book is no longer in library
-    assertEquals(library?.books.includes(TEST_BOOK_HP), false);
+    const library = await concept._getLibrary({ owner: USER_ALICE });
+    assertEquals((library as { books: ID[] }).books, [BOOK_LORD_OF_RINGS]); // HOBBIT should be gone
 
-    const progressAfter = await concept.progresses.findOne({ reader: TEST_USER_BOB, book: TEST_BOOK_HP });
-    assertEquals(progressAfter, null, "Progress should be deleted after removing from library");
+    const progressAfter = await concept._getProgress({ reader: USER_ALICE, book: BOOK_HOBBIT });
+    assertObjectMatch(progressAfter as object, { error: `No reading progress found for user ${USER_ALICE} on book ${BOOK_HOBBIT}.` }); // Progress should be gone
   });
 
-  await t.step("should return error if book is not in library when removing", async () => {
-    const result = await concept.removeFromLibrary({ owner: TEST_USER_ALICE, book: "nonExistentBook" as ID });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book nonExistentBook is not in user ${TEST_USER_ALICE}'s library.` });
+  await t.step("removeFromLibrary: should fail if book not in library", async () => {
+    const result = await concept.removeFromLibrary({ owner: USER_ALICE, book: UNKNOWN_BOOK });
+    assertObjectMatch(result as object, { error: `Book ${UNKNOWN_BOOK} is not in user ${USER_ALICE}'s library.` });
   });
 
-  // --- Test Queries ---
-  await t.step("_getLibrary should return books in library", async () => {
-    // Alice's library should still have HP and LOTR (if not removed in prior steps affecting Alice)
-    const result = await concept._getLibrary({ owner: TEST_USER_ALICE });
-    // Note: order might not be preserved by $addToSet and $pull, so sort for comparison
-    assertEquals(result.books.sort(), [TEST_BOOK_HP, TEST_BOOK_LOTR].sort());
+  await t.step("Queries: _getLibrary should return an empty array if library does not exist", async () => {
+    const library = await concept._getLibrary({ owner: "user:Carlos" as ID });
+    assertObjectMatch(library as object, { books: [] });
   });
 
-  await t.step("_getLibrary should return empty array for user with no library", async () => {
-    const result = await concept._getLibrary({ owner: "user:NoLibrary" as ID });
-    assertEquals(result, { books: [] });
+  await t.step("Queries: _getBookStructure should return book sections", async () => {
+    const structure = await concept._getBookStructure({ book: BOOK_LORD_OF_RINGS });
+    assertObjectMatch(structure as object, { sections: BOOK_STRUCTURE_LOTR.sections });
   });
 
-  await t.step("_getProgress should return current progress", async () => {
-    // Ensure some progress exists
-    await concept.openBook({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP }); // Re-open if it was implicitly removed by cleanup
-    await concept.jumpTo({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP, section: TEST_SECTION_HP2 });
-
-    const result = await concept._getProgress({ reader: TEST_USER_ALICE, book: TEST_BOOK_HP });
-    assertEquals(result, { currentPlace: TEST_SECTION_HP2, finished: false });
-  });
-
-  await t.step("_getProgress should return error if no progress exists", async () => {
-    const result = await concept._getProgress({ reader: TEST_USER_BOB, book: TEST_BOOK_LOTR });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `No reading progress found for user ${TEST_USER_BOB} on book ${TEST_BOOK_LOTR}.` });
-  });
-
-  await t.step("_getBookStructure should return book sections", async () => {
-    const result = await concept._getBookStructure({ book: TEST_BOOK_HP });
-    assertEquals(result, { sections: [TEST_SECTION_HP1, TEST_SECTION_HP2, TEST_SECTION_HP3] });
-  });
-
-  await t.step("_getBookStructure should return error if structure not found", async () => {
-    const result = await concept._getBookStructure({ book: "book:Unknown" as ID });
-    assertNotEquals(result, {});
-    assertObjectMatch(result as { error: string }, { error: `Book structure for book:Unknown not found.` });
-  });
-
-  // --- Trace: Fulfilling the Principle ---
-  await t.step("Principle: user reads a book and marks it complete", async () => {
-    const TRACE_USER = "user:Trace" as ID;
-    const TRACE_BOOK = "book:TraceBook" as ID;
-    const TRACE_SECTION_1 = "section:Trace_Ch1" as ID;
-    const TRACE_SECTION_2 = "section:Trace_Ch2" as ID;
-    const TRACE_SECTION_3 = "section:Trace_Ch3" as ID;
-
-    // 1. Setup: A book is divided into sections with a defined order.
-    // (Handled by the insertBookStructure helper for this specific book)
-    await insertBookStructure(concept.bookStructures, TRACE_BOOK, [
-      TRACE_SECTION_1,
-      TRACE_SECTION_2,
-      TRACE_SECTION_3,
-    ]);
-
-    // 2. A user opens a book from their library.
-    await concept.addToLibrary({ owner: TRACE_USER, book: TRACE_BOOK });
-    const openResult = await concept.openBook({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(openResult, {}, "openBook should succeed");
-
-    let progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.currentPlace, TRACE_SECTION_1, "Initial current place should be first section");
-    assertEquals(progress?.finished, false, "Book should not be finished initially");
-
-    // 3. The user moves through the sections, and their position is stored.
-    const nextResult1 = await concept.nextSection({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(nextResult1, {}, "nextSection should succeed");
-    progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.currentPlace, TRACE_SECTION_2, "Should move to next section (Chapter 2)");
-    assertEquals(progress?.finished, false);
-
-    const jumpResult = await concept.jumpTo({ reader: TRACE_USER, book: TRACE_BOOK, section: TRACE_SECTION_3 });
-    assertEquals(jumpResult, {}, "jumpTo should succeed");
-    progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.currentPlace, TRACE_SECTION_3, "Should jump to specified section (Chapter 3)");
-    assertEquals(progress?.finished, false);
-
-    // 4. When finished reading, the book is marked completed.
-    const markFinishedResult = await concept.markFinished({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(markFinishedResult, {}, "markFinished should succeed");
-
-    progress = await concept.progresses.findOne({ reader: TRACE_USER, book: TRACE_BOOK });
-    assertEquals(progress?.finished, true, "Book should be marked as finished");
-    assertEquals(progress?.currentPlace, TRACE_SECTION_3, "Current place should remain at the last section read");
-
-    // Verification of final state
-    const library = await concept.libraries.findOne({ _id: TRACE_USER });
-    assertEquals(library?.books.includes(TRACE_BOOK), true, "Trace book should still be in library");
-    assertEquals(progress?.reader, TRACE_USER);
-    assertEquals(progress?.book, TRACE_BOOK);
-    assertEquals(progress?.currentPlace, TRACE_SECTION_3);
-    assertEquals(progress?.finished, true);
+  await t.step("Queries: _getBookStructure should return error if structure not found", async () => {
+    const structure = await concept._getBookStructure({ book: UNKNOWN_BOOK });
+    assertObjectMatch(structure as object, { error: `Book structure for ${UNKNOWN_BOOK} not found.` });
   });
 
   await client.close();
 });
-```
 
-```trace
-# trace: Principle for BookReading
+Deno.test("BookReadingConcept - Principle Trace", async () => {
+  const [db, client] = await testDb();
+  const concept = new BookReadingConcept(db);
 
-**Scenario**: Alice wants to read "Harry Potter and the Sorcerer's Stone" and track her progress.
+  // Pre-populate book structure
+  await concept.bookStructures.insertOne(BOOK_STRUCTURE_LOTR);
 
-1.  **Preparation (External to BookReading, but sets up necessary state):**
-    *   A `BookStructure` for "Harry Potter" (ID: `book:HarryPotter`) is defined, consisting of sections: `section:HP_Chapter1`, `section:HP_Chapter2`, `section:HP_Chapter3`. (This is handled by manual insertion in the test setup via `insertBookStructure`).
+  // trace: a user opens a book from their library the book is divided into sections (e.g. paragraphs, pages, chapters)
+  // with a defined order the user moves through the sections, and their position is stored when finished reading,
+  // the book is marked completed
 
-2.  **`addToLibrary`**: Alice adds "Harry Potter" to her library.
-    *   **Action**: `BookReading.addToLibrary(owner: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: Alice's `Library` document now contains `book:HarryPotter`.
+  // 1. User Alice adds Lord of the Rings to her library
+  let result: Empty | { error: string };
+  result = await concept.addToLibrary({ owner: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals(result, {}, "1. Should successfully add book to library");
 
-3.  **`openBook`**: Alice decides to start reading "Harry Potter".
-    *   **Action**: `BookReading.openBook(reader: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: A `Progress` document is created for Alice and "Harry Potter", with `currentPlace` set to `section:HP_Chapter1` (the first section from the `BookStructure`) and `finished` set to `false`.
+  // Verify it's in the library
+  let library = await concept._getLibrary({ owner: USER_ALICE });
+  assertObjectMatch(library as object, { books: [BOOK_LORD_OF_RINGS] }, "1. Library should contain the book");
 
-4.  **`nextSection`**: Alice reads Chapter 1 and wants to move to Chapter 2.
-    *   **Action**: `BookReading.nextSection(reader: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: Alice's `Progress` for "Harry Potter" has `currentPlace` updated to `section:HP_Chapter2`. `finished` remains `false`.
+  // 2. User Alice opens Lord of the Rings
+  result = await concept.openBook({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals(result, {}, "2. Should successfully open book and create progress");
 
-5.  **`jumpTo`**: Alice skips ahead to Chapter 3 (perhaps she's re-reading).
-    *   **Action**: `BookReading.jumpTo(reader: "user:Alice", book: "book:HarryPotter", section: "section:HP_Chapter3")`
-    *   **Expected State**: Alice's `Progress` for "Harry Potter" has `currentPlace` updated to `section:HP_Chapter3`. `finished` remains `false` (as jumping implies active reading).
+  // Verify initial progress is at the first section
+  let progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertObjectMatch(progress as object, {
+    currentPlace: SECTION_LOTR_PROLOGUE,
+    finished: false,
+  }, "2. Progress should start at the first section");
 
-6.  **`markFinished`**: Alice finishes reading Chapter 3 and completes the book.
-    *   **Action**: `BookReading.markFinished(reader: "user:Alice", book: "book:HarryPotter")`
-    *   **Expected State**: Alice's `Progress` for "Harry Potter" has `finished` updated to `true`. `currentPlace` remains `section:HP_Chapter3`.
+  // 3. User Alice moves through sections
+  result = await concept.nextSection({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals(result, {}, "3. Should successfully move to next section (Chap1)");
+  progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals((progress as { currentPlace: ID }).currentPlace, SECTION_LOTR_CHAP1, "3. Current place should be Chap1");
 
-**Verification**:
-*   Alice's library contains "Harry Potter". (Query: `_getLibrary`)
-*   Alice's reading progress for "Harry Potter" correctly reflects that she finished at `section:HP_Chapter3` and the book is marked as `finished: true`. (Query: `_getProgress`)
+  result = await concept.nextSection({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals(result, {}, "3. Should successfully move to next section (Chap2)");
+  progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals((progress as { currentPlace: ID }).currentPlace, SECTION_LOTR_CHAP2, "3. Current place should be Chap2");
+
+  // 4. User Alice jumps to the epilogue
+  result = await concept.jumpTo({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS, section: SECTION_LOTR_EPILOGUE });
+  assertEquals(result, {}, "4. Should successfully jump to epilogue");
+  progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals((progress as { currentPlace: ID }).currentPlace, SECTION_LOTR_EPILOGUE, "4. Current place should be Epilogue");
+
+  // 5. User Alice marks the book as finished
+  result = await concept.markFinished({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertEquals(result, {}, "5. Should successfully mark book as finished");
+
+  // Verify the book is marked finished
+  progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
+  assertObjectMatch(progress as object, {
+    currentPlace: SECTION_LOTR_EPILOGUE,
+    finished: true,
+  }, "5. Progress should show finished=true");
+
+  await client.close();
+});
 ```

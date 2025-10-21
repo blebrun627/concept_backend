@@ -1,3 +1,13 @@
+---
+timestamp: 'Mon Oct 20 2025 15:38:19 GMT-0400 (Eastern Daylight Time)'
+parent: '[[../20251020_153819.194e6079.md]]'
+content_id: 3bb8596b3c8342a3d213b30bd459a00bf4e12e5cd2ab943a427cc637907020dc
+---
+
+# response:
+
+```typescript
+// file: src/BookReading/BookReadingConcept.test.ts
 import { assertEquals, assertObjectMatch, assertNotEquals } from "jsr:@std/assert";
 import { testDb } from "@utils/database.ts";
 import { ID, Empty } from "@utils/types.ts";
@@ -76,20 +86,18 @@ Deno.test("BookReadingConcept - Core Functionality", async (t) => {
     assertEquals(result, {});
 
     const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in progress, true, "Getting progress should not fail.");
-    assertObjectMatch(progress, { currentPlace: SECTION_LOTR_PROLOGUE, finished: false });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_PROLOGUE, finished: false });
   });
 
   await t.step("openBook: should not create progress if already exists", async () => {
     const initialProgress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in initialProgress, true, "Getting initial progress should not fail.");
+    assertEquals((initialProgress as { currentPlace: ID }).currentPlace, SECTION_LOTR_PROLOGUE);
 
     const result = await concept.openBook({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
     assertEquals(result, {}); // Should still return success as per spec
 
     const progressAfter = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in progressAfter, true, "Getting progress after re-opening should not fail.");
-    assertObjectMatch(progressAfter, initialProgress); // State should be unchanged
+    assertObjectMatch(progressAfter as object, initialProgress as object); // State should be unchanged
   });
 
   await t.step("openBook: should fail if book is not in reader's library", async () => {
@@ -108,8 +116,7 @@ Deno.test("BookReadingConcept - Core Functionality", async (t) => {
     assertEquals(result, {});
 
     const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in progress, true, "Getting progress after jumpTo should not fail.");
-    assertObjectMatch(progress, { currentPlace: SECTION_LOTR_CHAP3, finished: false });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_CHAP3, finished: false });
   });
 
   await t.step("jumpTo: should fail if section does not exist in book", async () => {
@@ -130,8 +137,7 @@ Deno.test("BookReadingConcept - Core Functionality", async (t) => {
     assertEquals(result, {});
 
     const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in progress, true, "Getting progress after nextSection should not fail.");
-    assertObjectMatch(progress, { currentPlace: SECTION_LOTR_EPILOGUE, finished: false });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_EPILOGUE, finished: false });
   });
 
   await t.step("nextSection: should fail if no subsequent section exists (already at last section)", async () => {
@@ -150,8 +156,7 @@ Deno.test("BookReadingConcept - Core Functionality", async (t) => {
     assertEquals(result, {});
 
     const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in progress, true, "Getting progress after markFinished should not fail.");
-    assertObjectMatch(progress, { currentPlace: SECTION_LOTR_EPILOGUE, finished: true });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_EPILOGUE, finished: true });
   });
 
   await t.step("markFinished: should fail if book is already marked finished", async () => {
@@ -169,8 +174,7 @@ Deno.test("BookReadingConcept - Core Functionality", async (t) => {
     assertEquals(result, {});
 
     const progress = await concept._getProgress({ reader: USER_ALICE, book: BOOK_LORD_OF_RINGS });
-    assertNotEquals("error" in progress, true, "Getting progress after reset should not fail.");
-    assertObjectMatch(progress, { currentPlace: SECTION_LOTR_PROLOGUE, finished: false });
+    assertObjectMatch(progress as object, { currentPlace: SECTION_LOTR_PROLOGUE, finished: false });
   });
 
   await t.step("resetProgress: should fail if no progress exists", async () => {
@@ -181,14 +185,14 @@ Deno.test("BookReadingConcept - Core Functionality", async (t) => {
   await t.step("removeFromLibrary: should remove book from library and delete progress", async () => {
     // Alice has BOOK_HOBBIT and no progress for it yet. Let's create progress first.
     await concept.openBook({ reader: USER_ALICE, book: BOOK_HOBBIT });
-    let progressBefore = await concept._getProgress({ reader: USER_ALICE, book: BOOK_HOBBIT });
-    assertEquals("error" in progressBefore, false, "Progress should exist before removal.");
+    const progressBefore = await concept._getProgress({ reader: USER_ALICE, book: BOOK_HOBBIT });
+    assertNotEquals(progressBefore as { error?: string }).error, "No reading progress found..."); // Ensure progress exists
 
     const result = await concept.removeFromLibrary({ owner: USER_ALICE, book: BOOK_HOBBIT });
     assertEquals(result, {});
 
     const library = await concept._getLibrary({ owner: USER_ALICE });
-    assertObjectMatch(library as object, { books: [BOOK_LORD_OF_RINGS] }); // HOBBIT should be gone
+    assertEquals((library as { books: ID[] }).books, [BOOK_LORD_OF_RINGS]); // HOBBIT should be gone
 
     const progressAfter = await concept._getProgress({ reader: USER_ALICE, book: BOOK_HOBBIT });
     assertObjectMatch(progressAfter as object, { error: `No reading progress found for user ${USER_ALICE} on book ${BOOK_HOBBIT}.` }); // Progress should be gone
@@ -278,3 +282,4 @@ Deno.test("BookReadingConcept - Principle Trace", async () => {
 
   await client.close();
 });
+```

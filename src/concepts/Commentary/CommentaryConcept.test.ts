@@ -1,4 +1,4 @@
-import { assertEquals, assertNotEquals, assertArrayIncludes, assertObjectMatch } from "jsr:@std/assert";
+import { assertEquals, assertNotEquals, assertArrayIncludes, assertObjectMatch, assert } from "jsr:@std/assert";
 import { testDb } from "../../utils/database.ts"; // Adjust path as needed
 import { ID } from "../../utils/types.ts"; // Adjust path as needed
 import CommentaryConcept from "./CommentaryConcept.ts";
@@ -17,11 +17,11 @@ Deno.test("Commentary Concept Functionality", async (test) => {
   const reactionLove = "love" as ID;
 
   // Helper to ensure an action returns a success result, and extract the value
-  const expectSuccess = <T>(result: T | { error: string }): T => {
+  const expectSuccess = <T extends object>(result: T | { error: string }): T => {
     if ("error" in result) {
       throw new Error(`Expected success, but got error: ${result.error}`);
     }
-    return result;
+    return result as T;
   };
 
   await test.step("postComment creates a new thread and comment", async () => {

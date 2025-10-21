@@ -6,6 +6,9 @@ import { ID } from "../../utils/types.ts";
 // Declare collection prefix, matching the one in MatchingConcept.ts
 const PREFIX = "Matching" + ".";
 
+type User = ID;
+type Book = ID;
+
 // Mock user and book IDs for testing
 const userA = "user:Alice" as ID;
 const userB = "user:Bob" as ID;
@@ -37,7 +40,6 @@ Deno.test("MatchingConcept", async (t) => {
     await t.step("generateMatches: should prevent generation if owner hasn't finished the book", async () => {
       await cleanCollections();
       const result = await concept.generateMatches({ owner: userA, book: book1 });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error, "Expected an error message");
       assertEquals((result as { error: string }).error, `User ${userA} has not finished book ${book1}.`);
     });
@@ -108,7 +110,6 @@ Deno.test("MatchingConcept", async (t) => {
       await cleanCollections();
       const nonExistentMatchId = "match:nonexistent" as ID;
       const result = await concept.acceptMatch({ owner: userA, matchId: nonExistentMatchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Match ${nonExistentMatchId} not found.`);
     });
@@ -121,7 +122,6 @@ Deno.test("MatchingConcept", async (t) => {
       const matchId = suggested[0]._id;
 
       const result = await concept.acceptMatch({ owner: userD, matchId: matchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `User ${userD} is not part of match ${matchId}.`);
     });
@@ -151,7 +151,6 @@ Deno.test("MatchingConcept", async (t) => {
       await concept.acceptMatch({ owner: userA, matchId: matchId }); // Now 'accepted'
 
       const result = await concept.acceptMatch({ owner: userA, matchId: matchId }); // Try to accept again
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Match ${matchId} is not in 'pending' status.`);
     });
@@ -160,7 +159,6 @@ Deno.test("MatchingConcept", async (t) => {
       await cleanCollections();
       const nonExistentMatchId = "match:nonexistent" as ID;
       const result = await concept.rejectMatch({ owner: userA, matchId: nonExistentMatchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Match ${nonExistentMatchId} not found.`);
     });
@@ -173,7 +171,6 @@ Deno.test("MatchingConcept", async (t) => {
       const matchId = suggested[0]._id;
 
       const result = await concept.rejectMatch({ owner: userD, matchId: matchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `User ${userD} is not part of match ${matchId}.`);
     });
@@ -220,7 +217,6 @@ Deno.test("MatchingConcept", async (t) => {
       await concept.rejectMatch({ owner: userA, matchId: matchId }); // First rejection
 
       const result = await concept.rejectMatch({ owner: userA, matchId: matchId }); // Second rejection
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Match ${matchId} is already 'rejected'.`);
     });
@@ -229,7 +225,6 @@ Deno.test("MatchingConcept", async (t) => {
       await cleanCollections();
       const nonExistentMatchId = "match:nonexistent" as ID;
       const result = await concept.explainMatch({ requester: userA, matchId: nonExistentMatchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Match ${nonExistentMatchId} not found.`);
     });
@@ -243,7 +238,6 @@ Deno.test("MatchingConcept", async (t) => {
       await concept.acceptMatch({ owner: userA, matchId: matchId }); // Make it accepted
 
       const result = await concept.explainMatch({ requester: userD, matchId: matchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `User ${userD} is not part of match ${matchId}.`);
     });
@@ -256,7 +250,6 @@ Deno.test("MatchingConcept", async (t) => {
       const matchId = suggested[0]._id; // Match is 'pending'
 
       const result = await concept.explainMatch({ requester: userA, matchId: matchId });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `Match ${matchId} is not in 'accepted' status.`);
     });
@@ -285,7 +278,6 @@ Deno.test("MatchingConcept", async (t) => {
     await t.step("nearbyMatches: should prevent finding nearby matches if owner hasn't finished book", async () => {
       await cleanCollections();
       const result = await concept.nearbyMatches({ owner: userD, book: book3 });
-      assertNotEquals(result, {}, "Expected an error object");
       assertExists((result as { error: string }).error);
       assertEquals((result as { error: string }).error, `User ${userD} has not finished book ${book3}.`);
     });
